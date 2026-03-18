@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Horário Escolar 2026</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #fff; color: #1a1a1a; padding: 1.5rem; }
+  .container { max-width: 700px; margin: 0 auto; }
+  h1 { font-size: 18px; font-weight: 500; margin-bottom: 1.5rem; color: #1a1a1a; }
+  .controls { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 1.5rem; align-items: center; }
+  .label { font-size: 13px; color: #666; }
+  select { min-width: 130px; padding: 6px 10px; font-size: 13px; border: 0.5px solid #ccc; border-radius: 8px; background: #fff; color: #1a1a1a; cursor: pointer; }
+  .day-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 1rem; }
+  .tab { padding: 5px 14px; font-size: 13px; border-radius: 8px; border: 0.5px solid #ccc; cursor: pointer; background: transparent; color: #666; transition: background 0.15s; }
+  .tab.active { background: #e6f1fb; color: #0c447c; border-color: transparent; font-weight: 500; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { background: #f5f5f5; color: #666; font-weight: 500; padding: 8px 10px; text-align: left; border-bottom: 0.5px solid #e0e0e0; }
+  td { padding: 9px 10px; border-bottom: 0.5px solid #e0e0e0; vertical-align: middle; transition: background 0.4s; }
+  tr.active-row td { background: #fffbe6; }
+  tr.active-row td.aula-num { color: #854F0B; font-weight: 700; }
+  tr.active-row td.time-col { color: #854F0B; }
+  .now-badge { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 20px; font-size: 11px; font-weight: 500; background: #FAC775; color: #633806; vertical-align: middle; }
+  .aula-num { font-weight: 500; color: #888; font-size: 12px; }
+  .time-col { font-size: 12px; color: #888; min-width: 70px; }
+  .subject-badge { display: inline-block; padding: 3px 9px; border-radius: 20px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+  .mode-toggle { display: flex; gap: 6px; flex-wrap: wrap; }
+  .mode-btn { padding: 5px 14px; font-size: 13px; border-radius: 8px; border: 0.5px solid #ccc; cursor: pointer; background: transparent; color: #666; }
+  .mode-btn.active { background: #f0f0f0; color: #1a1a1a; font-weight: 500; }
+  .clock { font-size: 13px; color: #666; margin-left: auto; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Horário escolar 2026</h1>
+  <div class="controls">
+    <span class="label">Turma:</span>
+    <select id="turma-sel">
+      <option value="6A">6º Ano A</option>
+      <option value="6B">6º Ano B</option>
+      <option value="7A">7º Ano A</option>
+      <option value="7B">7º Ano B</option>
+      <option value="8A">8º Ano A</option>
+      <option value="8B">8º Ano B</option>
+      <option value="9A">9º Ano A</option>
+      <option value="9B">9º Ano B</option>
+    </select>
+    <span class="label">Horário:</span>
+    <div class="mode-toggle">
+      <button class="mode-btn active" onclick="setMode('normal',this)">Normal (48 min)</button>
+      <button class="mode-btn" onclick="setMode('reduzido',this)">Reduzido (36 min)</button>
+      <button class="mode-btn" onclick="setMode('930',this)">Até 09:30</button>
+    </div>
+    <span class="clock" id="clock">--:--:--</span>
+  </div>
+
+  <div class="day-tabs" id="day-tabs"></div>
+  <div id="table-container"></div>
+</div>
+
+<script>
+const DIAS = ["2ª Feira","3ª Feira","4ª Feira","5ª Feira","6ª Feira"];
+
+const HORARIOS = {
+  normal:   ["07:30","08:18","09:06","09:54","10:42","11:30"],
+  reduzido: ["07:30","08:06","08:42","09:18","09:54","10:30"],
+  "930":    ["07:30","08:10","08:50","09:30","—","—"]
+};
+
+const SUBJECTS_COLOR = {
+  "hist":      { bg:"#EEEDFE", color:"#3C3489" },
+  "mat.":      { bg:"#FCEBEB", color:"#791F1F" },
+  "arte":      { bg:"#E6F1FB", color:"#0C447C" },
+  "ciências":  { bg:"#EAF3DE", color:"#27500A" },
+  "geog":      { bg:"#E1F5EE", color:"#085041" },
+  "inglês":    { bg:"#FAEEDA", color:"#633806" },
+  "ed. fís":   { bg:"#EAF3DE", color:"#3B6D11" },
+  "ed. fis":   { bg:"#EAF3DE", color:"#3B6D11" },
+  "religião":  { bg:"#FBEAF0", color:"#72243E" },
+  "default":   { bg:"#F1EFE8", color:"#444441" }
+};
+
+function getColor(subj) {
+  const s = subj.toLowerCase();
+  for (const [key, val] of Object.entries(SUBJECTS_COLOR)) {
+    if (s.includes(key)) return val;
+  }
+  return SUBJECTS_COLOR.default;
+}
+
+const RAW = {
+  "2ª Feira": {
+    "6A":  ["Nilmar hist.","Islara Arte","Alex Geog.","Islara","Ludmilla Ciências"],
+    "6B":  ["Hagda Ed. Fís.","Thalita Mat.","Islara","Ludmilla Ciências","Nilmar hist."],
+    "7A":  ["Ludmilla Ciências","Hagda Ed. Fís.","Thalita Mat.","Nilmar hist.","Islara"],
+    "7B":  ["Islara Arte","Ludmilla Ciências","Hagda Ed. Fís.","Eldira","Delzeni mat."],
+    "8A":  ["Thalita Religião","Nilmar hist.","Ludmilla Ciências","Delzeni mat.","Eldira"],
+    "8B":  ["Delzeni mat.","Alex Geog.","Eldira","Hagda Ed. Fís.","Eder Inglês"],
+    "9A":  ["Eldira","Delzeni mat.","Nilmar hist.","Alex Geog.","Hagda Ed. Fís."],
+    "9B":  ["Alex Geog.","Eldira","Delzeni mat.","Eder Inglês","Thalita Religião"]
+  },
+  "3ª Feira": {
+    "6A":  ["Alex Geog.","Thalita Mat.","Hagda Inglês","Thalita Mat.","Islara"],
+    "6B":  ["Thalita Mat.","Alex Geog.","Islara Arte","Hagda Inglês","Thalita Mat."],
+    "7A":  ["Islara Arte","Ludmilla Ciências","Nilmar hist.","Alex Geog.","Hagda Inglês"],
+    "7B":  ["Delzeni mat.","Nilmar hist.","Alex Geog.","Ludmilla Ciências","Eldira"],
+    "8A":  ["Hagda Ed. Fís.","Islara Arte","Delzeni mat.","Eldira","Alex Geog."],
+    "8B":  ["Nilmar hist.","Delzeni mat.","Eldira","Islara Arte","Ludmilla Ciências"],
+    "9A":  ["Ludmilla Ciências","Eldira","Thalita Religião","Delzeni mat.","Nilmar hist."],
+    "9B":  ["Eldira","Hagda Ed. Fís.","Ludmilla Ciências","Nilmar hist.","Delzeni mat."]
+  },
+  "4ª Feira": {
+    "6A":  ["Ludmilla Ciências","Nilmar hist.","Alex Geog.","Thalita Mat.","Islara"],
+    "6B":  ["Alex Geog.","Hagda Inglês","Nilmar hist.","Islara","Thalita Religião"],
+    "7A":  ["Hagda Ed. Fís.","Thalita Mat.","Thalita Mat.","Nilmar hist.","Ludmilla Ciências"],
+    "7B":  ["Thalita Religião","Delzeni mat.","Hagda Ed. Fís.","Alex Geog.","Eldira"],
+    "8A":  ["Eldira","Alex Geog.","Delzeni mat.","Ludmilla Ciências","Hagda Inglês"],
+    "8B":  ["Nilmar hist.","Ludmilla Ciências","Eldira","Delzeni mat.","Eder Inglês"],
+    "9A":  ["Islara Arte","Eldira","Eder Inglês","Hagda Ed. Fís.","Delzeni mat."],
+    "9B":  ["Delzeni mat.","Islara Arte","Ludmilla Ciências","Eldira","Alex Geog."]
+  },
+  "5ª Feira": {
+    "6A":  ["Nilmar hist.","Islara","Ludmilla Ciências","Thalita Mat.","Thalita Ed. Fis."],
+    "6B":  ["Thalita Mat.","Ludmilla Ciências","Islara","Nilmar hist.","Islara"],
+    "7A":  ["Islara","Thalita Mat.","Thalita Religião","Islara","Alex Geog."],
+    "7B":  ["Delzeni mat.","Hagda Inglês","Nilmar hist.","Alex Geog.","Eldira"],
+    "8A":  ["Alex Geog.","Delzeni mat.","Hagda Ed. Fís.","Eldira","Nilmar hist."],
+    "8B":  ["Eldira","Alex Geog.","Delzeni mat.","Ludmilla Ciências","Hagda Ed. Fís."],
+    "9A":  ["Ludmilla Ciências","Eldira","Alex Geog.","Delzeni mat.","Eder Inglês"],
+    "9B":  ["Hagda Ed. Fís.","Nilmar hist.","Eldira","Eder Inglês","Delzeni mat."]
+  },
+  "6ª Feira": {
+    "6A":  ["Islara Religião","Hagda Inglês","Thalita Mat.","Islara","Thalita Ed. Fis."],
+    "6B":  ["Hagda Ed. Fís.","Alex Geog.","Islara","Thalita Mat.","Ludmilla Ciências"],
+    "7A":  ["Thalita Mat.","Islara","Alex Geog.","Hagda Inglês","Islara"],
+    "7B":  ["Ludmilla Ciências","Delzeni mat.","Eldira","Nilmar hist.","Hagda Inglês"],
+    "8A":  ["Delzeni mat.","Ludmilla Ciências","Hagda Inglês","Eldira","Nilmar hist."],
+    "8B":  ["Nilmar hist.","Thalita Religião","Delzeni mat.","Alex Geog.","Eldira"],
+    "9A":  ["Eldira","Nilmar hist.","Ludmilla Ciências","Delzeni mat.","Alex Geog."],
+    "9B":  ["Alex Geog.","Eldira","Nilmar hist.","Ludmilla Ciências","Delzeni mat."]
+  }
+};
+
+let currentMode = "normal";
+let lastAula = -2;
+let lastDay = "";
+
+function toMin(str) {
+  if (!str || str === "—") return null;
+  const [h, m] = str.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function getCurrentAula(mode) {
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const times = HORARIOS[mode];
+  const maxAulas = mode === '930' ? 4 : 5;
+  for (let i = 0; i < maxAulas; i++) {
+    const start = toMin(times[i]);
+    const end = toMin(times[i + 1]);
+    if (start === null || end === null) continue;
+    if (nowMin >= start && nowMin < end) return i;
+  }
+  return -1;
+}
+
+function getTodayDia() {
+  const dow = new Date().getDay();
+  const map = {1:"2ª Feira",2:"3ª Feira",3:"4ª Feira",4:"5ª Feira",5:"6ª Feira"};
+  return map[dow] || null;
+}
+
+function setMode(mode, btn) {
+  currentMode = mode;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  lastAula = -2;
+  render();
+}
+
+function renderTabs() {
+  const todayDia = getTodayDia();
+  const container = document.getElementById('day-tabs');
+  container.innerHTML = DIAS.map(d => {
+    const isToday = d === todayDia;
+    return `<button class="tab${d===currentDay?' active':''}" ${isToday?'style="font-weight:600"':''} onclick="selectDay('${d}',this)">${d}${isToday?' ●':''}</button>`;
+  }).join('');
+}
+
+function selectDay(day, btn) {
+  currentDay = day;
+  document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  lastAula = -2;
+  render();
+}
+
+const todayInit = getTodayDia();
+let currentDay = todayInit || "2ª Feira";
+
+function render() {
+  const turma = document.getElementById('turma-sel').value;
+  const aulas = RAW[currentDay][turma];
+  const times = HORARIOS[currentMode];
+  const maxAulas = currentMode === '930' ? 4 : 5;
+  const todayDia = getTodayDia();
+  const activeAula = (currentDay === todayDia) ? getCurrentAula(currentMode) : -1;
+
+  let html = `<table>
+    <thead><tr>
+      <th style="width:40px">Aula</th>
+      <th style="width:110px">Horário</th>
+      <th>Matéria / Professor(a)</th>
+    </tr></thead><tbody>`;
+
+  for (let i = 0; i < maxAulas; i++) {
+    const subj = aulas[i] || '—';
+    const time = times[i];
+    const endTime = times[i+1] || '';
+    const c = getColor(subj);
+    const isActive = i === activeAula;
+    const timeStr = (endTime && endTime !== '—') ? `${time} – ${endTime}` : time;
+
+    const badge = subj !== '—'
+      ? `<span class="subject-badge" style="background:${c.bg};color:${c.color}">${subj}</span>${isActive ? '<span class="now-badge">agora</span>' : ''}`
+      : `<span style="color:#aaa;font-size:12px">sem aula</span>`;
+
+    html += `<tr class="${isActive ? 'active-row' : ''}">
+      <td class="aula-num">${i+1}ª</td>
+      <td class="time-col">${timeStr}</td>
+      <td>${badge}</td>
+    </tr>`;
+  }
+
+  html += `</tbody></table>`;
+  document.getElementById('table-container').innerHTML = html;
+  lastAula = activeAula;
+  lastDay = currentDay;
+}
+
+function tick() {
+  const now = new Date();
+  const h = String(now.getHours()).padStart(2,'0');
+  const m = String(now.getMinutes()).padStart(2,'0');
+  const s = String(now.getSeconds()).padStart(2,'0');
+  document.getElementById('clock').textContent = `${h}:${m}:${s}`;
+
+  const todayDia = getTodayDia();
+  const activeAula = (currentDay === todayDia) ? getCurrentAula(currentMode) : -1;
+
+  if (activeAula !== lastAula || currentDay !== lastDay) {
+    render();
+    renderTabs();
+  }
+}
+
+document.getElementById('turma-sel').addEventListener('change', () => { lastAula = -2; render(); });
+
+renderTabs();
+render();
+setInterval(tick, 1000);
+</script>
+</body>
+</html>
